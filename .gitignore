@@ -102,3 +102,7 @@ graphify-out/*
 start-dev-silent.cjs
 debug.log
 .scratch/
+.hermuse-local/
+hermuse/*.local.json
+hermuse/__pycache__/
+hermuse/plugin/__pycache__/

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "listen": { "host": "127.0.0.1", "port": 20129 },
+  "credentials_file": "~/.config/hermuse-router/credentials.json",
+  "state_file": "~/.local/state/hermuse-router/private-sessions.json",
+  "audit_file": "~/.local/state/hermuse-router/decisions.jsonl",
+  "subscription": {
+    "url": "http://127.0.0.1:20128/v1/chat/completions",
+    "default_model": "cx/gpt-6-luna",
+    "hard_model": "cx/gpt-6.1-sol",
+    "timeout_ms": 120000
+  },
+  "privacy": {
+    "models": ["openai/gpt-6-luna"],
+    "providers": ["azure", "azure/us", "azure/eu"],
+    "zdr": true,
+    "data_collection": "deny",
+    "allow_fallbacks": false,
+    "account_zdr_only_verified": false,
+    "endpoint_cache_ms": 30000,
+    "timeout_ms": 120000
+  },
+  "classification": {
+    "mode": "zdr",
+    "model": "nace-ai/drex-max-20261016",
+    "catalog_model": "nace-ai/drex-max",
+    "providers": ["deepinfra/us"],
+    "private_threshold": 0.1,
+    "hard_threshold": 0.75,
+    "max_chars": 100000,
+    "timeout_ms": 20000
+  },
+  "limits": { "body_bytes": 4194304, "max_concurrency": 8 },
+  "rules": {
+    "finance": [
+      "\\b(financ(?:e|es|ial)|budget|invest(?:ment|ing|ments)?|portfolio|brokerage|schwab|fidelity|vanguard|empower|net[ -]?worth|401k|401\\(k\\)|roth|retirement|mortgage|credit[ -]?card|bank[ -]?account|account[ -]?balance|paycheck|salary|income[ -]?tax|tax[ -]?return|dividend|asset[ -]?allocation|holding[s]?|savings|loan|debt|expense[s]?|money|stock[s]?|bond[s]?|ETF[s]?)\\b",
+      "/api/v[0-9]+/finance(?:/|\\b)"
+    ],
+    "privacy": ["\\b(zero[ -]?data[ -]?retention|zero[ -]?retention|ZDR|privacy[ -]?mode|private[ -]?mode|keep (?:this|it) private|use (?:the )?private route)\\b"],
+    "hard": ["\\b(prove|formal verification|complex reasoning|deep analysis|architecture review|harder model|stronger model|delegate to sol)\\b"]
+  }
+}

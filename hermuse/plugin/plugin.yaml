@@ -1,0 +1,3 @@
+name: hermuse-routing
+version: 0.1.0
+description: Adds stable conversation routing metadata for the local Hermuse privacy gateway.
