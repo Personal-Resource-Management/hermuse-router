@@ -9,6 +9,8 @@ This directory adapts the 9Router fork for three configurable routes. It is a sm
 | privacy / finance | `openai/gpt-6-luna` through OpenRouter, strict eligible Azure endpoints | ZDR always required; no subscription fallback |
 | routing decision | pinned `nace-ai/drex-max-20261016` through OpenRouter Decisions, DeepInfra US | The same strict ZDR checks; never uses the subscription |
 
+All Chat Completions aliases default to high reasoning through `default_reasoning_effort` (also high when omitted). Explicit request effort/off/budget choices remain overrides. The default applies to subscription and strict-ZDR answer models alike, including auxiliary calls without an effort field. The separate Decisions classifier API has no reasoning-effort parameter and is unchanged. Hermes profile, auxiliary, delegation and VM Codex defaults are configured separately to high; this setting does not enable voice, MoA, or unattended Codex.
+
 ## Boundaries
 
 The policy gateway listens on `127.0.0.1:20129`; 9Router stays on `127.0.0.1:20128`. Private prompts bypass 9Router, its request logs, its optional compression services and its automatic fallback engine. Only the OpenRouter inference API receives private requests.

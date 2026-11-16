@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { validatePolicy, PolicyError, loadCredentials } from '../config.mjs';
 import { PrivacyState, initializeState } from '../state.mjs';
-import { PolicyEngine, authenticate } from '../engine.mjs';
+import { PolicyEngine, authenticate, applyReasoningDefault } from '../engine.mjs';
 
 async function lineageTest(t) {
   const dir = await sandbox(t);
@@ -39,6 +39,28 @@ const headers = (client = credentials.clients[0], session = 'session-1') => new 
   authorization: `Bearer ${client.key}`, 'x-hermuse-session': session,
 });
 test('compaction ancestry preserves privacy and unresolved child taint propagates to root', lineageTest);
+test('reasoning defaults high, remains configurable and preserves explicit effort or budgets', () => {
+  assert.equal(applyReasoningDefault({}, {}).reasoning_effort, 'high');
+  assert.equal(applyReasoningDefault({}, {default_reasoning_effort:'low'}).reasoning_effort, 'low');
+  for (const body of [{reasoning_effort:'low'}, {reasoning:{effort:'medium'}}, {reasoning:{enabled:false}}, {reasoning:{max_tokens:1000}}]) {
+    assert.deepEqual(applyReasoningDefault(body, {}), body);
+  }
+  assert.equal(applyReasoningDefault({reasoning_effort:''}, {}).reasoning_effort, 'high');
+  assert.throws(() => validatePolicy({...structuredClone(template),default_reasoning_effort:'invalid'}), errCode('invalid_default_reasoning_effort'));
+});
+test('high default reaches ordinary, hard and ZDR answer transports without changing privacy', async t => {
+  const dir = await sandbox(t), sent=[];
+  const engine=await engineFor(dir,{fetchImpl:async (url, options={})=>{
+    if (String(url).endsWith('/endpoints/zdr')) return Response.json({data:[{model_id:template.privacy.models[0],safety_retention:false,status:0,tag:'azure'}]});
+    sent.push({url:String(url),body:JSON.parse(options.body)});
+    return Response.json({choices:[{message:{content:'ok'}}]});
+  }});
+  for (const [i,alias] of ['hermuse-default','hermuse-hard','hermuse-private'].entries()) await engine.handle(request(alias),headers(credentials.clients[0],'reasoning-'+i));
+  assert.deepEqual(sent.map(c=>c.body.reasoning_effort),['high','high','high']);
+  assert.equal(sent[2].body.provider.zdr,true);
+  assert.equal(sent[2].body.provider.allow_fallbacks,false);
+  assert.equal(sent[2].url.includes('openrouter.ai'),true);
+});
 function errCode(code) {
   return (error) => error instanceof PolicyError && error.code === code;
 }

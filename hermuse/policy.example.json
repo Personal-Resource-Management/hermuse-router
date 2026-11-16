@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "default_reasoning_effort": "high",
   "listen": { "host": "127.0.0.1", "port": 20129 },
   "credentials_file": "~/.config/hermuse-router/credentials.json",
   "state_file": "~/.local/state/hermuse-router/private-sessions.json",

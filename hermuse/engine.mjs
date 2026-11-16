@@ -8,6 +8,14 @@ import { ZdrTransport, CHAT_FIELDS } from './zdr.mjs';
 function secureEqual(a, b) {
   return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 }
+export function applyReasoningDefault(body, policy) {
+  const reasoning = body.reasoning;
+  // A default must not overwrite an explicit effort, token budget or off switch.
+  const explicit = (body.reasoning_effort != null && body.reasoning_effort !== '')
+    || (reasoning?.effort != null && reasoning.effort !== '')
+    || reasoning?.max_tokens != null || reasoning?.enabled === false;
+  return explicit ? body : { ...body, reasoning_effort: policy.default_reasoning_effort ?? 'high' };
+}
 export function authenticate(header, credentials) {
   const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!token) throw new PolicyError('unauthorized', 401);
@@ -87,6 +95,7 @@ export class PolicyEngine {
     const credentials = await this.credentials(policy.credentials_file);
     const client = authenticate(headers.get('authorization'), credentials);
     const info = inspect(body, headers, policy);
+    body = applyReasoningDefault(body, policy);
     const keys = info.sessions.map(s => createHmac('sha256',credentials.session_hmac_key).update(s).digest('hex'));
     const key = keys.at(-1); // one lock and audit identity for the root conversation
     return this.locked(key, async () => {
