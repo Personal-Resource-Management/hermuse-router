@@ -23,7 +23,7 @@ OpenRouter's account/key guardrail must also be configured **ZDR only**, with Sa
 
 `X-Hermuse-Session` identifies a conversation. Missing metadata forces the private route, covering auxiliary clients that skip middleware; malformed metadata is rejected. Once a conversation is private, a keyed digest is saved durably before the upstream request and the conversation can never downgrade, even after restart or context compaction. Changing API client keys does not reset it. The state file must be explicitly initialized; missing/corrupt state blocks requests. Changing the session HMAC key also fails closed against the old state.
 
-The included Hermes middleware plugin supplies a stable, profile-scoped root conversation identifier, following the local session database's compaction lineage. Auxiliary calls or unresolved lineage are forced private. Hermes middleware itself is fail-open, so the independent gateway forces privacy if the plugin fails to attach an identity.
+The included Hermes middleware plugin supplies a profile-scoped conversation identifier and the local session database's compaction lineage. Auxiliary calls, unresolved lineage, scheduled sessions and the canonical Bot Chat (including descendants) are forced private. Bot Chat receives aggregated background notices, so it keeps that boundary even when the main interactive model is the subscription route. Pin model-backed Muse jobs to `hermuse-private` as well; keep delivery and health jobs model-free. Hermes middleware itself is fail-open, so the independent gateway forces privacy if the plugin fails to attach an identity.
 
 Use an isolated Hermes privacy profile with the **private client key** for finance/private work. That key forces every call private, even if a caller names the default or hard alias. Keep that profile's local memories and history separate from the ordinary profile. Finance tools/credentials must not be available to the ordinary profile before the later integration gates.
 
@@ -58,6 +58,7 @@ Tests (no credentials or network):
 
 ```sh
 node --test hermuse/test/*.test.mjs
+python hermuse/test/plugin_privacy_test.py
 ```
 
 The main 9Router application remains upstream-compatible. This policy package does not require rebuilding its web dashboard. The original host Docker agent is outside this installation and stays running until Jake explicitly requests its shutdown.

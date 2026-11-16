@@ -4,11 +4,12 @@ import os
 
 
 def session_lineage(session, home):
-    """Read IDs only. Preserve ancestry so unresolved private child IDs remain tainted."""
+    """Read identity metadata only; scheduled work and Bot Chat always require ZDR."""
     from hermes_state import SessionDB
     db = SessionDB(db_path=home / "state.db", read_only=True)
     try:
         ids = []
+        private = False
         current = session
         while current:
             if current in ids or len(ids) >= 64:
@@ -17,8 +18,12 @@ def session_lineage(session, home):
             row = db.get_session(current)
             if not row:
                 raise ValueError("Unresolved session ancestry")
+            # Bot Chat receives aggregated background notices. Its descendants
+            # retain the same privacy boundary after compaction or branching.
+            private |= (row.get("source") == "cron" or
+                        row.get("title") == SessionDB.CANONICAL_BOT_CHAT_TITLE)
             current = row.get("parent_session_id")
-        return ids
+        return ids, private
     finally:
         db.close()
 
@@ -45,8 +50,10 @@ def tag_request(**kwargs):
         headers["X-Hermuse-Privacy"] = "required"
     else:
         try:
-            ids = session_lineage(session, home)
+            ids, private = session_lineage(session, home)
             headers["X-Hermuse-Lineage"] = json.dumps([f"{profile}:{s}" for s in ids], separators=(",", ":"))
+            if private:
+                headers["X-Hermuse-Privacy"] = "required"
         except Exception:
             # The current ID is still sent and durably tainted by the gateway.
             # A later successful ancestry read will carry that taint to the root.
