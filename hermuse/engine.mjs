@@ -98,22 +98,25 @@ export class PolicyEngine {
     // safe can run at the same time after their decisions are committed.
     return this.locked(key, async () => {
       const state = this.state(policy.state_file,createHash('sha256').update(credentials.session_hmac_key).digest('hex'));
-      let privateReason = client.force_private ? 'private_client_key' : info.privateReason;
+      // Direct mode deliberately does not classify ordinary content. Existing
+      // private lineages and explicit/ambiguous identity remain protected.
+      let privateReason = client.force_private ? 'private_client_key'
+        : policy.ordinary_direct_terra && !['explicit_private','missing_session_metadata'].includes(info.privateReason) ? null : info.privateReason;
       for (const digest of keys) if (await state.isPrivate(digest)) { privateReason = 'private_conversation'; break; }
       let hard = info.hard;
-      if (!privateReason && policy.classification.mode === 'zdr') {
+      if (!privateReason && !policy.ordinary_direct_terra && policy.classification.mode === 'zdr') {
         const verdict = await this.zdr.classify(policy,credentials,info.text,abortSignal);
         if (verdict.private || verdict.finance) privateReason = 'zdr_classification';
         hard ||= verdict.complexity >= policy.classification.hard_threshold;
       }
-      const route = privateReason ? 'privacy' : hard && !info.explicitDefault ? 'hard' : 'default';
+      const route = privateReason ? 'privacy' : !policy.ordinary_direct_terra && hard && !info.explicitDefault ? 'hard' : 'default';
       // Persist every member of the known lineage before any upstream call,
       // so a later child, retry, or compaction cannot escape strict ZDR.
       if (route === 'privacy') for (const digest of keys) await state.markPrivate(digest);
-      const modelKey = route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : body.model === 'hermuse-auto-luna' ? 'luna_model' : 'default_model';
+      const modelKey = policy.ordinary_direct_terra ? 'terra_model' : route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : body.model === 'hermuse-auto-luna' ? 'luna_model' : 'default_model';
       const model = route === 'privacy' ? policy.privacy.models[0] : policy.subscription[modelKey];
       if (!model) throw new PolicyError('subscription_model_not_configured');
-      const event = { time:new Date().toISOString(), request_id:randomUUID(), session:key, route, model, provider:route === 'privacy'?'openrouter-zdr':'subscription', reason:privateReason || (hard&&!info.explicitDefault?'complexity':'ordinary') };
+      const event = { time:new Date().toISOString(), request_id:randomUUID(), session:key, route, model, provider:route === 'privacy'?'openrouter-zdr':'subscription', reason:privateReason || (!policy.ordinary_direct_terra && hard&&!info.explicitDefault?'complexity':'ordinary') };
       // Audit failure is fail-closed. It never allows a different provider.
       try { await this.log(policy,event); } catch { throw new PolicyError('decision_log_unavailable'); }
       return { keys, key, route, model, event };

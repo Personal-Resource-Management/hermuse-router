@@ -14,8 +14,9 @@ function requireCondition(ok, code = 'invalid_policy') { if (!ok) throw new Poli
 function integer(n, min, max) { return Number.isInteger(n) && n >= min && n <= max; }
 function exactKeys(o, keys) { requireCondition(o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).every(k => keys.includes(k))); }
 export function validatePolicy(c) {
-  exactKeys(c, ['version','listen','credentials_file','state_file','audit_file','subscription','privacy','classification','limits','rules','default_reasoning_effort']);
+  exactKeys(c, ['version','listen','credentials_file','state_file','audit_file','subscription','privacy','classification','limits','rules','default_reasoning_effort','ordinary_direct_terra']);
   requireCondition(c.version === 1);
+  if (c.ordinary_direct_terra !== undefined) requireCondition(typeof c.ordinary_direct_terra === 'boolean', 'invalid_direct_terra_setting');
   if (c.default_reasoning_effort !== undefined) requireCondition(['none','minimal','low','medium','high','xhigh','max','ultra'].includes(c.default_reasoning_effort), 'invalid_default_reasoning_effort');
   exactKeys(c.listen, ['host','port']);
   requireCondition(c.listen.host === '127.0.0.1' && integer(c.listen.port, 1, 65535));

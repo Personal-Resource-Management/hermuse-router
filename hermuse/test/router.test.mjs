@@ -64,6 +64,28 @@ test('Luna comparison is selectable but cannot override strict privacy', async t
   assert.equal((await engine.handle(request('hermuse-auto-luna'), headers(credentials.clients[0],'luna-comparison'))).model,template.subscription.luna_model);
   assert.equal((await engine.handle(request('hermuse-auto-luna'), headers(credentials.clients[1],'luna-private'))).route,'privacy');
 });
+test('direct Terra bypasses classification and model escalation but preserves explicit and existing privacy', async t => {
+  const dir = await sandbox(t), sent = [];
+  const engine = await engineFor(dir, { policyPatch:{ordinary_direct_terra:true}, fetchImpl: async (url, options = {}) => {
+    const dest = String(url);
+    if (dest.endsWith('/endpoints/zdr')) return Response.json({data:[{model_id:template.privacy.models[0],safety_retention:false,status:0,tag:'azure'}]});
+    if (dest.endsWith('/decisions')) throw new Error('Classifier must not run in direct mode');
+    sent.push({url:dest,body:JSON.parse(options.body)});
+    return Response.json({choices:[{message:{content:'ok'}}]});
+  }});
+  const fresh = headers(credentials.clients[0], 'fresh-direct');
+  const result = await engine.handle(request('hermuse-hard', {messages:[{role:'user',content:'finance and complex reasoning'}]}), fresh);
+  assert.equal(result.route,'default');
+  assert.equal(result.model,template.subscription.terra_model);
+  assert.equal(sent.at(-1).body.model,template.subscription.terra_model);
+  const pinned = headers(credentials.clients[0], 'previous-private');
+  pinned.set('x-hermuse-privacy','required');
+  assert.equal((await engine.handle(request(),pinned)).route,'privacy');
+  const inherited = await engine.handle(request(),headers(credentials.clients[0],'previous-private'));
+  assert.equal(inherited.route,'privacy');
+  assert.equal(sent.at(-1).body.provider.zdr,true);
+  assert.equal((await engine.handle(request(),headers(credentials.clients[1],'private-key'))).route,'privacy');
+});
 test('reasoning defaults high, remains configurable and preserves explicit effort or budgets', () => {
   assert.equal(applyReasoningDefault({}, {}).reasoning_effort, 'high');
   assert.equal(applyReasoningDefault({}, {default_reasoning_effort:'low'}).reasoning_effort, 'low');
