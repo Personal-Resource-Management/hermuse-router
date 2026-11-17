@@ -3,29 +3,43 @@ import hashlib
 import os
 
 
+def candidate_homes(home):
+    """Known profile databases, not arbitrary filesystem paths."""
+    root = home.parent.parent if home.parent.name == "profiles" else home
+    profiles = root / "profiles"
+    return [root] + sorted((p for p in profiles.iterdir() if p.is_dir() and not p.is_symlink()), key=str) if profiles.is_dir() else [root]
+
+
 def session_lineage(session, home):
-    """Read identity metadata only; scheduled work and Bot Chat always require ZDR."""
+    """Resolve unique cross-profile ancestry using metadata only, or fail closed."""
     from hermes_state import SessionDB
-    db = SessionDB(db_path=home / "state.db", read_only=True)
+    homes = candidate_homes(home)
+    databases = []
     try:
+        for candidate in homes:
+            if (candidate / "state.db").is_file():
+                databases.append((candidate, SessionDB(db_path=candidate / "state.db", read_only=True)))
         ids = []
         private = False
         current = session
         while current:
-            if current in ids or len(ids) >= 64:
+            if any(s == current for s, _ in ids) or len(ids) >= 64:
                 raise ValueError("Invalid or excessive session ancestry")
-            ids.append(current)
-            row = db.get_session(current)
-            if not row:
-                raise ValueError("Unresolved session ancestry")
+            matches = [(owner, row) for owner, db in databases if (row := db.get_session(current))]
+            if len(matches) != 1:
+                raise ValueError("Unresolved or ambiguous session ancestry")
+            owner, row = matches[0]
+            ids.append((current, owner))
             # Bot Chat receives aggregated background notices. Its descendants
             # retain the same privacy boundary after compaction or branching.
-            private |= (row.get("source") == "cron" or
+            private |= (owner.parent.name == "profiles" and owner.name.lower() in ("finance", "private") or
+                        row.get("source") == "cron" or
                         row.get("title") == SessionDB.CANONICAL_BOT_CHAT_TITLE)
             current = row.get("parent_session_id")
         return ids, private
     finally:
-        db.close()
+        for _, db in databases:
+            db.close()
 
 
 def register(ctx):
@@ -51,7 +65,17 @@ def tag_request(**kwargs):
     else:
         try:
             ids, private = session_lineage(session, home)
-            headers["X-Hermuse-Lineage"] = json.dumps([f"{profile}:{s}" for s in ids], separators=(",", ":"))
+            # Retain the original active-profile identity as an alias. It may
+            # already be privacy-tainted from an earlier unresolved child.
+            lineage = []
+            for s, owner in ids:
+                for namespace in (profile, hashlib.sha256(str(owner).encode()).hexdigest()[:16]):
+                    identity = f"{namespace}:{s}"
+                    if identity not in lineage:
+                        lineage.append(identity)
+            if len(lineage) > 64:
+                raise ValueError("Excessive session ancestry aliases")
+            headers["X-Hermuse-Lineage"] = json.dumps(lineage, separators=(",", ":"))
             if private:
                 headers["X-Hermuse-Privacy"] = "required"
         except Exception:

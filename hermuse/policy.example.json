@@ -7,8 +7,9 @@
   "audit_file": "~/.local/state/hermuse-router/decisions.jsonl",
   "subscription": {
     "url": "http://127.0.0.1:20128/v1/chat/completions",
-    "default_model": "cx/gpt-6-luna",
+    "default_model": "cx/gpt-6.1-terra",
     "terra_model": "cx/gpt-6.1-terra",
+    "luna_model": "cx/gpt-6-luna",
     "hard_model": "cx/gpt-6.1-sol",
     "timeout_ms": 120000
   },

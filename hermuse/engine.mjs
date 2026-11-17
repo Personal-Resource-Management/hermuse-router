@@ -111,7 +111,7 @@ export class PolicyEngine {
       const route = privateReason ? 'privacy' : hard && !info.explicitDefault ? 'hard' : 'default';
       if (route === 'privacy') for (const digest of keys) await state.markPrivate(digest); // durable BEFORE any upstream call
       // Audit failure is fail-closed. It never causes a fallback to a different provider.
-      const modelKey = route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : 'default_model';
+      const modelKey = route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : body.model === 'hermuse-auto-luna' ? 'luna_model' : 'default_model';
       const model = route === 'privacy' ? policy.privacy.models[0] : policy.subscription[modelKey];
       if (!model) throw new PolicyError('subscription_model_not_configured');
       const event = { time:new Date().toISOString(), request_id:randomUUID(), session:key, route, model, provider:route === 'privacy'?'openrouter-zdr':'subscription', reason:privateReason || (hard&&!info.explicitDefault?'complexity':'ordinary') };

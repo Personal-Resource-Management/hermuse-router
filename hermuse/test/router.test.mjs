@@ -55,6 +55,15 @@ test('Terra auto preserves complexity routing and fails closed for finance', asy
   assert.equal(sent[2].body.provider.zdr, true);
   assert.equal(sent[2].body.provider.allow_fallbacks, false);
 });
+test('Luna comparison is selectable but cannot override strict privacy', async t => {
+  const dir = await sandbox(t);
+  const engine = await engineFor(dir, { fetchImpl: async url => String(url).endsWith('/endpoints/zdr')
+    ? Response.json({data:[{model_id:template.privacy.models[0],safety_retention:false,status:0,tag:'azure'}]})
+    : Response.json({choices:[{message:{content:'ok'}}]}) });
+  assert.equal((await engine.handle(request('hermuse-auto'), headers(credentials.clients[0],'terra-default'))).model,template.subscription.terra_model);
+  assert.equal((await engine.handle(request('hermuse-auto-luna'), headers(credentials.clients[0],'luna-comparison'))).model,template.subscription.luna_model);
+  assert.equal((await engine.handle(request('hermuse-auto-luna'), headers(credentials.clients[1],'luna-private'))).route,'privacy');
+});
 test('reasoning defaults high, remains configurable and preserves explicit effort or budgets', () => {
   assert.equal(applyReasoningDefault({}, {}).reasoning_effort, 'high');
   assert.equal(applyReasoningDefault({}, {default_reasoning_effort:'low'}).reasoning_effort, 'low');
