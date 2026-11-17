@@ -8,6 +8,7 @@
   "subscription": {
     "url": "http://127.0.0.1:20128/v1/chat/completions",
     "default_model": "cx/gpt-6-luna",
+    "terra_model": "cx/gpt-6.1-terra",
     "hard_model": "cx/gpt-6.1-sol",
     "timeout_ms": 120000
   },

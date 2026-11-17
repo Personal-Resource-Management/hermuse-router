@@ -39,6 +39,22 @@ const headers = (client = credentials.clients[0], session = 'session-1') => new 
   authorization: `Bearer ${client.key}`, 'x-hermuse-session': session,
 });
 test('compaction ancestry preserves privacy and unresolved child taint propagates to root', lineageTest);
+test('Terra auto preserves complexity routing and fails closed for finance', async t => {
+  const dir = await sandbox(t), sent = [];
+  const engine = await engineFor(dir, { fetchImpl: async (url, options = {}) => {
+    if (String(url).endsWith('/endpoints/zdr')) return Response.json({data:[{model_id:template.privacy.models[0],safety_retention:false,status:0,tag:'azure'}]});
+    sent.push({url:String(url), body:JSON.parse(options.body)});
+    return Response.json({choices:[{message:{content:'ok'}}]});
+  }});
+  const normal = await engine.handle(request('hermuse-auto-terra'), headers(credentials.clients[0], 'terra-normal'));
+  const hard = await engine.handle(request('hermuse-auto-terra', {messages:[{role:'user',content:'formal verification'}]}), headers(credentials.clients[0], 'terra-hard'));
+  const finance = await engine.handle(request('hermuse-auto-terra', {messages:[{role:'user',content:'show my finance'}]}), headers(credentials.clients[0], 'terra-private'));
+  assert.equal(normal.model, template.subscription.terra_model);
+  assert.equal(hard.model, template.subscription.hard_model);
+  assert.equal(finance.route, 'privacy');
+  assert.equal(sent[2].body.provider.zdr, true);
+  assert.equal(sent[2].body.provider.allow_fallbacks, false);
+});
 test('reasoning defaults high, remains configurable and preserves explicit effort or budgets', () => {
   assert.equal(applyReasoningDefault({}, {}).reasoning_effort, 'high');
   assert.equal(applyReasoningDefault({}, {default_reasoning_effort:'low'}).reasoning_effort, 'low');

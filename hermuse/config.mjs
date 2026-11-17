@@ -8,7 +8,7 @@ export class PolicyError extends Error {
 export const OPENROUTER_CHAT = 'https://openrouter.ai/api/v1/chat/completions';
 export const OPENROUTER_ZDR = 'https://openrouter.ai/api/v1/endpoints/zdr';
 export const OPENROUTER_DECISIONS = 'https://openrouter.ai/api/alpha/decisions';
-export const ALIASES = ['hermuse-auto', 'hermuse-default', 'hermuse-hard', 'hermuse-private', 'hermuse-finance'];
+export const ALIASES = ['hermuse-auto', 'hermuse-auto-terra', 'hermuse-default', 'hermuse-hard', 'hermuse-private', 'hermuse-finance'];
 export function expand(p) { return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : path.resolve(p); }
 function requireCondition(ok, code = 'invalid_policy') { if (!ok) throw new PolicyError(code); }
 function integer(n, min, max) { return Number.isInteger(n) && n >= min && n <= max; }
@@ -20,10 +20,11 @@ export function validatePolicy(c) {
   exactKeys(c.listen, ['host','port']);
   requireCondition(c.listen.host === '127.0.0.1' && integer(c.listen.port, 1, 65535));
   for (const k of ['credentials_file','state_file','audit_file']) requireCondition(typeof c[k] === 'string' && c[k].length > 0);
-  exactKeys(c.subscription, ['url','default_model','hard_model','timeout_ms']);
+  exactKeys(c.subscription, ['url','default_model','hard_model','terra_model','timeout_ms']);
   const url = new URL(c.subscription.url);
   requireCondition(url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.pathname === '/v1/chat/completions' && !url.username && !url.password && !url.search && !url.hash);
   for (const k of ['default_model','hard_model']) requireCondition(/^cx\/[a-zA-Z0-9._-]+$/.test(c.subscription[k]), 'subscription_must_use_codex');
+  if (c.subscription.terra_model !== undefined) requireCondition(/^cx\/[a-zA-Z0-9._-]+$/.test(c.subscription.terra_model), 'subscription_must_use_codex');
   requireCondition(integer(c.subscription.timeout_ms, 1000, 300000));
   exactKeys(c.privacy, ['models','providers','zdr','data_collection','allow_fallbacks','account_zdr_only_verified','endpoint_cache_ms','timeout_ms']);
   requireCondition(c.privacy.zdr === true && c.privacy.data_collection === 'deny' && c.privacy.allow_fallbacks === false, 'zdr_cannot_be_disabled');

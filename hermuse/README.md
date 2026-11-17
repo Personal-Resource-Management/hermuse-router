@@ -5,6 +5,7 @@ This directory adapts the 9Router fork for three configurable routes. It is a sm
 | Route | Default target | Privacy rule |
 |---|---|---|
 | ordinary | `cx/gpt-6-luna` through the ChatGPT subscription | Finance/private checks run first |
+| Terra comparison | `hermuse-auto-terra` uses configurable `subscription.terra_model` for ordinary work and the configured hard model for difficult work | The same finance/private checks and strict-ZDR override apply; missing Terra configuration fails closed |
 | hard | `cx/gpt-6.1-sol` through the same subscription | Explicit selection or configurable difficulty threshold |
 | privacy / finance | `openai/gpt-6-luna` through OpenRouter, strict eligible Azure endpoints | ZDR always required; no subscription fallback |
 | routing decision | pinned `nace-ai/drex-max-20261016` through OpenRouter Decisions, DeepInfra US | The same strict ZDR checks; never uses the subscription |
@@ -33,7 +34,7 @@ Automatic topic detection is not a proof of subject matter. Local finance rules 
 
 ### Automatic and explicit routing
 
-Virtual model aliases are `hermuse-auto`, `hermuse-default`, `hermuse-hard`, `hermuse-private`, `hermuse-finance`. Unknown/raw model names are rejected. A hard/default preference can never override privacy. Clients may additionally set `X-Hermuse-Privacy: required` or `metadata.hermuse.privacy:true` / `finance:true`.
+Virtual model aliases are `hermuse-auto`, `hermuse-auto-terra`, `hermuse-default`, `hermuse-hard`, `hermuse-private`, `hermuse-finance`. Unknown/raw model names are rejected. A hard/default preference can never override privacy. Clients may additionally set `X-Hermuse-Privacy: required` or `metadata.hermuse.privacy:true` / `finance:true`.
 
 `classification.mode:"zdr"` makes a strict-ZDR typed decision call for otherwise ordinary input. The actual answer/work still runs on the subscription. The decision model is separate from the private answer model. It answers three probability questions for privacy, finance and difficulty. Privacy probabilities at or above the conservative configured threshold force the private route. Missing probabilities, unexpected types or a different returned build stop the request.
 
