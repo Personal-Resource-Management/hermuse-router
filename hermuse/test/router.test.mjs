@@ -210,6 +210,84 @@ test('subscription errors are surfaced without trying a privacy or alternate rou
 });
 
 
+test('independent ordinary work on one root conversation dispatches in parallel after its decisions commit', async t => {
+  const dir = await sandbox(t);
+  let releaseFirst;
+  const firstReleased = new Promise(resolve => { releaseFirst = resolve; });
+  let sawFirst;
+  const firstStarted = new Promise(resolve => { sawFirst = resolve; });
+  let sawSecond;
+  const secondStarted = new Promise(resolve => { sawSecond = resolve; });
+  let subscriptionCalls = 0;
+  const engine = await engineFor(dir, { fetchImpl: async (url) => {
+    assert.equal(String(url), template.subscription.url);
+    subscriptionCalls += 1;
+    if (subscriptionCalls === 1) {
+      sawFirst();
+      await firstReleased;
+    } else {
+      sawSecond();
+    }
+    return Response.json({ choices: [{ message: { content: 'ok' } }] });
+  } });
+  const first = engine.handle(request(), headers(credentials.clients[0], 'parallel-root'));
+  await firstStarted;
+  const second = engine.handle(request(), headers(credentials.clients[0], 'parallel-root'));
+  try {
+    await Promise.race([
+      secondStarted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('second ordinary dispatch waited behind model inference')), 1_000)),
+    ]);
+  } finally {
+    releaseFirst();
+  }
+  await Promise.all([first, second]);
+  assert.equal(subscriptionCalls, 2);
+});
+
+test('a committed private decision taints a sibling before either private response finishes', async t => {
+  const dir = await sandbox(t);
+  let releaseFirst;
+  const firstReleased = new Promise(resolve => { releaseFirst = resolve; });
+  let sawFirstPrivateCall;
+  const firstPrivateCall = new Promise(resolve => { sawFirstPrivateCall = resolve; });
+  let privateCalls = 0;
+  let subscriptionCalls = 0;
+  const engine = await engineFor(dir, { fetchImpl: async (url) => {
+    const value = String(url);
+    if (value.endsWith('/endpoints/zdr')) {
+      return Response.json({ data: [{ model_id: template.privacy.models[0], safety_retention: false, status: 0, tag: 'azure' }] });
+    }
+    if (value.endsWith('/chat/completions')) {
+      privateCalls += 1;
+      if (privateCalls === 1) {
+        sawFirstPrivateCall();
+        await firstReleased;
+      }
+      return Response.json({ choices: [{ message: { content: 'ok' } }] });
+    }
+    subscriptionCalls += 1;
+    return Response.json({ choices: [{ message: { content: 'ordinary' } }] });
+  } });
+  const privateHeaders = headers(credentials.clients[0], 'tainted-root');
+  privateHeaders.set('x-hermuse-privacy', 'required');
+  const first = engine.handle(request(), privateHeaders);
+  await firstPrivateCall;
+  const sibling = engine.handle(request(), headers(credentials.clients[0], 'tainted-root'));
+  try {
+    const result = await Promise.race([
+      sibling,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('tainted sibling waited behind private model inference')), 1_000)),
+    ]);
+    assert.equal(result.route, 'privacy');
+  } finally {
+    releaseFirst();
+  }
+  await first;
+  assert.equal(subscriptionCalls, 0);
+  assert.equal(privateCalls, 2);
+});
+
 test('ZDR catalog accepts only explicitly safe, active, allowlisted matching endpoints', async () => {
   const { ZdrTransport } = await import('../zdr.mjs');
   const invalid = [

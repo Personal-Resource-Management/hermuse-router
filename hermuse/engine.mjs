@@ -90,14 +90,12 @@ export class PolicyEngine {
     await mkdir(path.dirname(p), { recursive:true, mode:0o700 });
     await appendFile(p, JSON.stringify(event)+'\n', { mode:0o600 });
   }
-  async handle(body, headers, abortSignal) {
-    const policy = await this.load(this.policyFile);
-    const credentials = await this.credentials(policy.credentials_file);
-    const client = authenticate(headers.get('authorization'), credentials);
-    const info = inspect(body, headers, policy);
-    body = applyReasoningDefault(body, policy);
+  async decide(body, info, client, policy, credentials, abortSignal) {
     const keys = info.sessions.map(s => createHmac('sha256',credentials.session_hmac_key).update(s).digest('hex'));
     const key = keys.at(-1); // one lock and audit identity for the root conversation
+    // The lock protects the privacy decision and its durable taint.  It must
+    // not include model inference: siblings that are already independently
+    // safe can run at the same time after their decisions are committed.
     return this.locked(key, async () => {
       const state = this.state(policy.state_file,createHash('sha256').update(credentials.session_hmac_key).digest('hex'));
       let privateReason = client.force_private ? 'private_client_key' : info.privateReason;
@@ -109,28 +107,41 @@ export class PolicyEngine {
         hard ||= verdict.complexity >= policy.classification.hard_threshold;
       }
       const route = privateReason ? 'privacy' : hard && !info.explicitDefault ? 'hard' : 'default';
-      if (route === 'privacy') for (const digest of keys) await state.markPrivate(digest); // durable BEFORE any upstream call
-      // Audit failure is fail-closed. It never causes a fallback to a different provider.
+      // Persist every member of the known lineage before any upstream call,
+      // so a later child, retry, or compaction cannot escape strict ZDR.
+      if (route === 'privacy') for (const digest of keys) await state.markPrivate(digest);
       const modelKey = route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : body.model === 'hermuse-auto-luna' ? 'luna_model' : 'default_model';
       const model = route === 'privacy' ? policy.privacy.models[0] : policy.subscription[modelKey];
       if (!model) throw new PolicyError('subscription_model_not_configured');
       const event = { time:new Date().toISOString(), request_id:randomUUID(), session:key, route, model, provider:route === 'privacy'?'openrouter-zdr':'subscription', reason:privateReason || (hard&&!info.explicitDefault?'complexity':'ordinary') };
+      // Audit failure is fail-closed. It never allows a different provider.
       try { await this.log(policy,event); } catch { throw new PolicyError('decision_log_unavailable'); }
-      let result;
-      if (route === 'privacy') result = await this.zdr.send(policy,credentials,body,{signal:abortSignal});
-      else {
-        const payload = { model };
-        for (const k of CHAT_FIELDS) if (body[k] !== undefined) payload[k]=body[k];
-        let response;
-        try {
-          response = await this.fetch(policy.subscription.url, { method:'POST',redirect:'error',
-            headers:{ Authorization:`Bearer ${credentials.backend_key}`,'Content-Type':'application/json','X-Session-Id':info.session,'X-Token-Saver':'off' },
-            body:JSON.stringify(payload), signal:AbortSignal.any([AbortSignal.timeout(policy.subscription.timeout_ms), ...(abortSignal?[abortSignal]:[])]) });
-        } catch { throw new PolicyError('subscription_unavailable'); }
-        if (!response.ok) { await response.body?.cancel(); throw new PolicyError('subscription_rejected'); }
-        result = { response,model,provider:'subscription' };
-      }
-      return { ...result,route,requestId:event.request_id };
+      return { keys, key, route, model, event };
     });
+  }
+  async dispatch(body, info, policy, credentials, decision, abortSignal) {
+    if (decision.route === 'privacy') {
+      const result = await this.zdr.send(policy,credentials,body,{signal:abortSignal});
+      return { ...result,route:decision.route,requestId:decision.event.request_id };
+    }
+    const payload = { model: decision.model };
+    for (const k of CHAT_FIELDS) if (body[k] !== undefined) payload[k]=body[k];
+    let response;
+    try {
+      response = await this.fetch(policy.subscription.url, { method:'POST',redirect:'error',
+        headers:{ Authorization:`Bearer ${credentials.backend_key}`,'Content-Type':'application/json','X-Session-Id':info.session,'X-Token-Saver':'off' },
+        body:JSON.stringify(payload), signal:AbortSignal.any([AbortSignal.timeout(policy.subscription.timeout_ms), ...(abortSignal?[abortSignal]:[])]) });
+    } catch { throw new PolicyError('subscription_unavailable'); }
+    if (!response.ok) { await response.body?.cancel(); throw new PolicyError('subscription_rejected'); }
+    return { response,model:decision.model,provider:'subscription',route:decision.route,requestId:decision.event.request_id };
+  }
+  async handle(body, headers, abortSignal) {
+    const policy = await this.load(this.policyFile);
+    const credentials = await this.credentials(policy.credentials_file);
+    const client = authenticate(headers.get('authorization'), credentials);
+    const info = inspect(body, headers, policy);
+    body = applyReasoningDefault(body, policy);
+    const decision = await this.decide(body, info, client, policy, credentials, abortSignal);
+    return this.dispatch(body, info, policy, credentials, decision, abortSignal);
   }
 }
