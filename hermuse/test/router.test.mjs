@@ -78,6 +78,10 @@ test('direct Terra bypasses classification and model escalation but preserves ex
   assert.equal(result.route,'default');
   assert.equal(result.model,template.subscription.terra_model);
   assert.equal(sent.at(-1).body.model,template.subscription.terra_model);
+  const luna = await engine.handle(request('hermuse-auto-luna'),headers(credentials.clients[0],'fresh-luna'));
+  assert.equal(luna.route,'default');
+  assert.equal(luna.model,template.subscription.luna_model);
+  assert.equal(sent.at(-1).body.model,template.subscription.luna_model);
   const pinned = headers(credentials.clients[0], 'previous-private');
   pinned.set('x-hermuse-privacy','required');
   assert.equal((await engine.handle(request(),pinned)).route,'privacy');
@@ -85,6 +89,7 @@ test('direct Terra bypasses classification and model escalation but preserves ex
   assert.equal(inherited.route,'privacy');
   assert.equal(sent.at(-1).body.provider.zdr,true);
   assert.equal((await engine.handle(request(),headers(credentials.clients[1],'private-key'))).route,'privacy');
+  assert.equal((await engine.handle(request('hermuse-auto-luna'),headers(credentials.clients[0],'previous-private'))).route,'privacy');
 });
 test('reasoning defaults high, remains configurable and preserves explicit effort or budgets', () => {
   assert.equal(applyReasoningDefault({}, {}).reasoning_effort, 'high');

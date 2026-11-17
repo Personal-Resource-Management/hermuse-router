@@ -113,7 +113,7 @@ export class PolicyEngine {
       // Persist every member of the known lineage before any upstream call,
       // so a later child, retry, or compaction cannot escape strict ZDR.
       if (route === 'privacy') for (const digest of keys) await state.markPrivate(digest);
-      const modelKey = policy.ordinary_direct_terra ? 'terra_model' : route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : body.model === 'hermuse-auto-luna' ? 'luna_model' : 'default_model';
+      const modelKey = policy.ordinary_direct_terra ? (body.model === 'hermuse-auto-luna' ? 'luna_model' : 'terra_model') : route === 'hard' ? 'hard_model' : body.model === 'hermuse-auto-terra' ? 'terra_model' : body.model === 'hermuse-auto-luna' ? 'luna_model' : 'default_model';
       const model = route === 'privacy' ? policy.privacy.models[0] : policy.subscription[modelKey];
       if (!model) throw new PolicyError('subscription_model_not_configured');
       const event = { time:new Date().toISOString(), request_id:randomUUID(), session:key, route, model, provider:route === 'privacy'?'openrouter-zdr':'subscription', reason:privateReason || (!policy.ordinary_direct_terra && hard&&!info.explicitDefault?'complexity':'ordinary') };
